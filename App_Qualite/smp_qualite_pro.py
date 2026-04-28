@@ -60,7 +60,7 @@ if menu == "📋 Checklist Terrain":
         
         obs = st.text_area("Observations")
         if st.form_submit_button("🚀 VALIDER ET TRANSMETTRE"):
-            # Préparation des données
+            
             nb_nok = list(results.values()).count("🔴 NOK")
             etat = "NOK" if nb_nok > 0 else "OK"
             details = " | ".join([f"{k}: {v}" for k, v in results.items()])
@@ -76,45 +76,66 @@ if menu == "📋 Checklist Terrain":
             
             if sheet_ready:
                 try:
+                    # 1. On lit le tableau existant
                     df_existing = conn.read()
-                    df_updated = pd.concat([df_existing, pd.DataFrame([new_row])], ignore_index=True)
-                    # FIX DE L'ERREUR : On convertit en liste de dictionnaires
-                    conn.update(data=df_updated.to_dict(orient="records"))
+                    
+                    # 2. On crée le nouveau tableau
+                    df_new = pd.DataFrame([new_row])
+                    
+                    # 3. On colle les deux
+                    df_updated = pd.concat([df_existing, df_new], ignore_index=True)
+                    
+                    # 4. On envoie proprement (L'ERREUR EST CORRIGÉE ICI)
+                    conn.update(data=df_updated)
+                    
+                    # 5. On vide la mémoire pour que les graphiques se mettent à jour
+                    st.cache_data.clear()
+                    
                     st.balloons()
-                    st.success("✅ Données envoyées !")
+                    st.success("✅ Données envoyées avec succès !")
                 except Exception as e:
-                    st.error(f"Erreur : {e}")
+                    st.error(f"Erreur de sauvegarde : {e}")
 
 # ==========================================
-# 4. DASHBOARD STATS (GRAPHIQUES AUTOMATIQUES)
+# 4. DASHBOARD STATS
 # ==========================================
 elif menu == "📊 Dashboard Stats":
     st.title("📊 Statistiques en Temps Réel")
     
     if sheet_ready:
-        df = conn.read()
-        if not df.empty:
-            # Métriques
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total Audits", len(df))
-            col2.metric("Taux OK", f"{(len(df[df['Conformite']=='OK'])/len(df)*100):.1f}%")
-            col3.metric("Alertes NOK", len(df[df['Conformite']=='NOK']))
-
-            st.divider()
-
-            # Graphiques
-            g1, g2 = st.columns(2)
-            with g1:
-                st.subheader("Audits par Secteur")
-                fig_bar = px.bar(df['Secteur'].value_counts(), labels={'value':'Nombre', 'index':'Secteur'}, color_discrete_sequence=['#1E3A8A'])
-                st.plotly_chart(fig_bar, use_container_width=True)
+        try:
+            df = conn.read()
+            df = df.dropna(how='all') # Nettoie les lignes vides
             
-            with g2:
-                st.subheader("Répartition Conformité")
-                fig_pie = px.pie(df, names='Conformite', color='Conformite', color_discrete_map={'OK':'#2ecc71', 'NOK':'#e74c3c'})
-                st.plotly_chart(fig_pie, use_container_width=True)
+            if not df.empty:
+                # Métriques Rapides
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Total Audits", len(df))
+                
+                if 'Conformite' in df.columns:
+                    nb_ok = len(df[df['Conformite'].isin(['OK', 'CONFORME'])])
+                    col2.metric("Taux OK", f"{(nb_ok / len(df) * 100):.1f}%")
+                    col3.metric("Alertes NOK", len(df) - nb_ok)
 
-            st.subheader("Historique des données")
-            st.dataframe(df.sort_index(ascending=False), use_container_width=True)
-        else:
-            st.info("Aucune donnée disponible.")
+                st.divider()
+
+                # Graphiques
+                g1, g2 = st.columns(2)
+                with g1:
+                    if 'Secteur' in df.columns:
+                        st.subheader("Audits par Secteur")
+                        fig_bar = px.bar(df['Secteur'].value_counts(), color_discrete_sequence=['#1E3A8A'])
+                        st.plotly_chart(fig_bar, use_container_width=True)
+                
+                with g2:
+                    if 'Conformite' in df.columns:
+                        st.subheader("Répartition Conformité")
+                        fig_pie = px.pie(df, names='Conformite', color='Conformite', color_discrete_map={'OK':'#2ecc71', 'NOK':'#e74c3c'})
+                        st.plotly_chart(fig_pie, use_container_width=True)
+
+                st.subheader("Historique des données")
+                st.dataframe(df.sort_index(ascending=False), use_container_width=True)
+            else:
+                st.info("Le Google Sheet est vide pour le moment. Faites un premier audit !")
+        except Exception as e:
+            st.error(f"Erreur de lecture du Dashboard : {e}")
