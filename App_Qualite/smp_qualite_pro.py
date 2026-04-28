@@ -5,22 +5,18 @@ from fpdf import FPDF
 from datetime import datetime
 import plotly.express as px
 
-# --- DESIGN & COULEURS ---
+# --- DESIGN PREMIUM ---
 st.set_page_config(page_title="SMP Sentinel Pro", layout="wide", page_icon="🛡️")
 
 st.markdown("""
     <style>
     .stApp { background-color: #F4F7F9; }
-    .main-title { color: #1E3A8A; font-size: 35px; font-weight: bold; margin-bottom: 20px; }
-    .stButton>button {
-        background: linear-gradient(to right, #074799, #001A6E);
-        color: white; border-radius: 10px; font-weight: bold; border: none; height: 3em;
-    }
-    .card { background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .main-title { color: #1E3A8A; font-size: 28px; font-weight: bold; margin-bottom: 15px; }
+    .stButton>button { background: linear-gradient(to right, #074799, #001A6E); color: white; border-radius: 8px; font-weight: bold; border: none; height: 3em; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONNEXION GOOGLE SHEETS (Sécurisée) ---
+# --- CONNEXION GOOGLE SHEETS ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     sheet_ready = True
@@ -30,83 +26,156 @@ except:
 # --- MENU LATÉRAL ---
 with st.sidebar:
     st.image("https://www.smp-paca.com/wp-content/uploads/2021/04/logo-smp.png", width=150)
-    st.markdown("### 🛠️ **ADMINISTRATION**")
-    menu = st.radio("Navigation", ["📝 Nouvel Audit", "📊 Tableau de Bord", "📚 Historique"])
+    menu = st.radio("MENU", ["📋 Checklist Terrain", "📦 Produits Finis", "🛠️ Demandes Opérateurs", "📊 Dashboard"])
     st.divider()
-    st.caption(f"Connecté : Jordan - {datetime.now().strftime('%d/%m/%Y')}")
+    st.caption("Garant Qualité - SMP")
 
 # --- FONCTION PDF ---
-def export_pdf(data):
+def export_pdf(title, data):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(190, 10, "RAPPORT D'AUDIT QUALITE - SMP", ln=True, align='C')
-    pdf.ln(10)
-    pdf.set_font("Arial", size=12)
+    pdf.cell(190, 10, f"RAPPORT : {title}", ln=True, align='C')
+    pdf.ln(5)
+    pdf.set_font("Arial", size=10)
     for k, v in data.items():
-        pdf.cell(50, 10, f"{k} :", border=1)
-        pdf.cell(130, 10, f" {v}", border=1, ln=True)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(50, 8, f" {k}", border=1, fill=True)
+        pdf.multi_cell(140, 8, f" {v}", border=1)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- LOGIQUE DES PAGES ---
-
-if menu == "📝 Nouvel Audit":
-    st.markdown('<p class="main-title">🚀 Nouvel Audit Terrain</p>', unsafe_allow_html=True)
+# ==========================================
+# 1. CHECKLIST TERRAIN (AVEC TES VRAIS CRITÈRES)
+# ==========================================
+if menu == "📋 Checklist Terrain":
+    st.markdown('<p class="main-title">📋 Checklist Terrain</p>', unsafe_allow_html=True)
     
-    with st.form("audit_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            secteur = st.selectbox("📍 Secteur", ["Débit", "Usinage", "Montage", "Expédition"])
-            machine = st.text_input("⚙️ Machine", "Poste 01")
+    # Tes vraies données issues de tes fichiers
+    criteres_par_secteur = {
+        "Débit": ["Propreté du poste de travail", "Port des EPI", "Évacuation des chutes", "Rangement de la zone", "Qualité des coupes (absence de bavures)", "Précision dimensionnelle des profils"],
+        "Sertissage/Jointage": ["Application correcte de la colle/silicone", "Qualité de l'assemblage (pas de jour)", "Mise en place des joints (sans étirement)", "Propreté des cadres (pas de traces de colle)", "Contrôle de l'équerrage"],
+        "Montage": ["Mise en place des cales vitrage", "Serrage correct des paumelles/charnières", "Test de fonctionnement (ouverture/fermeture fluide)", "Fixation des crémones et gâches", "Absence de rayures/défauts d'aspect"],
+        "Usinage": ["Conformité des perçages et fraisages", "Ébavurage correct", "Évacuation des copeaux", "Contrôle dimensionnel après usinage"],
+        "Logistique/Expédition": ["Qualité de l'emballage (film, cales)", "Étiquetage conforme", "Conditionnement sur palette (stabilité)", "Vérification des accessoires joints à la commande"]
+    }
+    
+    with st.form("form_checklist"):
+        c1, c2 = st.columns(2)
+        with c1: secteur = st.selectbox("📍 Secteur", list(criteres_par_secteur.keys()))
+        with c2: machine = st.text_input("⚙️ Machine / Ligne", "Poste Principal")
         
-        st.markdown("### 🔍 Contrôle")
-        # On utilise des colonnes pour que ce soit beau
-        q1, q2, q3 = st.columns(3)
-        with q1: p1 = st.radio("Propreté", ["OK", "Vig", "NOK"], horizontal=True)
-        with q2: p2 = st.radio("Dimension", ["OK", "Vig", "NOK"], horizontal=True)
-        with q3: p3 = st.radio("Aspect", ["OK", "Vig", "NOK"], horizontal=True)
+        st.markdown("### 🔍 Points de contrôle")
+        resultats_audit = {}
         
+        # Affiche les questions spécifiques au secteur choisi
+        for question in criteres_par_secteur[secteur]:
+            resultats_audit[question] = st.radio(f"**{question}**", ["Conforme", "Mineur", "Majeur"], horizontal=True)
+            
         obs = st.text_area("✍️ Observations")
+        submit = st.form_submit_button("VALIDER L'AUDIT")
         
-        btn = st.form_submit_button("VALIDER L'AUDIT")
-        
-        if btn:
-            res = {"Date": datetime.now().strftime("%d/%m/%Y %H:%M"), "Secteur": secteur, "Machine": machine, "Proprete": p1, "Dimension": p2, "Aspect": p3, "Observations": obs}
+        if submit:
+            # Calcul de conformité basique
+            nb_majeur = list(resultats_audit.values()).count("Majeur")
+            etat = "NOK" if nb_majeur > 0 else "OK"
+            
+            # Formatage des détails pour Google Sheets
+            details_str = " | ".join([f"{k}: {v}" for k, v in resultats_audit.items()])
+            
+            data_to_save = {"Date": datetime.now().strftime("%d/%m/%Y %H:%M"), "Type": "Checklist", "Secteur": secteur, "Machine_Ref": machine, "Conformite": etat, "Details_Audit": details_str, "Observations": obs}
             
             if sheet_ready:
                 try:
                     df = conn.read()
-                    df = pd.concat([df, pd.DataFrame([res])], ignore_index=True)
+                    df = pd.concat([df, pd.DataFrame([data_to_save])], ignore_index=True)
                     conn.update(data=df)
-                    st.balloons()
-                    st.success("✅ Enregistré dans Google Sheets !")
-                    st.download_button("📩 Télécharger le PDF", export_pdf(res), f"Audit_{secteur}.pdf")
-                except:
-                    st.error("⚠️ Erreur : Le lien Google Sheet dans 'Secrets' est absent ou mauvais.")
-            else:
-                st.warning("L'envoi vers Google Sheets n'est pas configuré.")
+                    st.success("✅ Audit enregistré !")
+                    st.download_button("📩 Télécharger le PDF", export_pdf(f"Audit {secteur}", data_to_save), f"Audit_{secteur}.pdf")
+                except Exception as e: st.error(f"Erreur Google Sheets : {e}")
 
-elif menu == "📊 Tableau de Bord":
-    st.markdown('<p class="main-title">📊 Statistiques en Direct</p>', unsafe_allow_html=True)
+# ==========================================
+# 2. PRODUITS FINIS (TES VRAIS CRITÈRES)
+# ==========================================
+elif menu == "📦 Produits Finis":
+    st.markdown('<p class="main-title">📦 Audit Produits Finis</p>', unsafe_allow_html=True)
+    
+    pf_criteres = [
+        "Châssis bien positionné sur la palette", "Calage adéquat entre les menuiseries",
+        "Fixation sécurisée par sangle/film", "Étiquetage client clair et visible",
+        "Présence du colis d'accessoires (si applicable)", "Menuiseries sans rayures/salissures",
+        "Contrôle global de la géométrie avant expédition"
+    ]
+    
+    with st.form("form_pf"):
+        ref = st.text_input("🆔 Référence Commande / Palette")
+        scores = {}
+        st.markdown("### Évaluation")
+        for crit in pf_criteres:
+            scores[crit] = st.select_slider(f"{crit}", options=["NOK", "OK"], value="OK")
+            
+        obs = st.text_area("Observations")
+        if st.form_submit_button("ENREGISTRER PRODUIT FINI"):
+            nb_nok = list(scores.values()).count("NOK")
+            etat = "CONFORME" if nb_nok == 0 else "NON CONFORME"
+            details_str = " | ".join([f"{k}: {v}" for k, v in scores.items()])
+            
+            data_to_save = {"Date": datetime.now().strftime("%d/%m/%Y %H:%M"), "Type": "Produit Fini", "Secteur": "Expédition", "Machine_Ref": ref, "Conformite": etat, "Details_Audit": details_str, "Observations": obs}
+            
+            if sheet_ready:
+                try:
+                    df = conn.read()
+                    df = pd.concat([df, pd.DataFrame([data_to_save])], ignore_index=True)
+                    conn.update(data=df)
+                    if etat == "CONFORME": st.success("✅ Produit conforme, enregistré !")
+                    else: st.error("❌ Produit Non Conforme, enregistré !")
+                except: st.error("Erreur Google Sheets")
+
+# ==========================================
+# 3. DEMANDES OPÉRATEURS (TON FICHIER EXACT)
+# ==========================================
+elif menu == "🛠️ Demandes Opérateurs":
+    st.markdown('<p class="main-title">🛠️ Saisie Demande Opérateur</p>', unsafe_allow_html=True)
+    
+    with st.form("form_demande"):
+        c1, c2 = st.columns(2)
+        with c1: secteur = st.selectbox("Secteur", ["Débit", "Sertissage/Jointage", "Montage", "Usinage", "Logistique/Expédition"])
+        with c2: machine = st.text_input("Machine / Poste")
+        
+        desc = st.text_area("Description du problème")
+        crit = st.select_slider("Criticité", options=["Basse", "Moyenne", "Haute"])
+        statut = st.radio("État d'avancement", ["À faire", "En cours", "Terminé"], horizontal=True)
+        
+        if st.form_submit_button("ENVOYER DEMANDE"):
+            details_str = f"Criticité: {crit} | Statut: {statut}"
+            data_to_save = {"Date": datetime.now().strftime("%d/%m/%Y %H:%M"), "Type": "Demande", "Secteur": secteur, "Machine_Ref": machine, "Conformite": statut, "Details_Audit": details_str, "Observations": desc}
+            
+            if sheet_ready:
+                try:
+                    df = conn.read()
+                    df = pd.concat([df, pd.DataFrame([data_to_save])], ignore_index=True)
+                    conn.update(data=df)
+                    st.success("✅ Demande transmise !")
+                except: st.error("Erreur Google Sheets")
+
+# ==========================================
+# 4. DASHBOARD STATS
+# ==========================================
+elif menu == "📊 Dashboard":
+    st.markdown('<p class="main-title">📊 Historique & Dashboard</p>', unsafe_allow_html=True)
+    
     if sheet_ready:
         try:
             df = conn.read()
             if not df.empty:
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Total Audits", len(df))
-                c2.metric("Alertes NOK", len(df[df.values == "NOK"]))
-                c3.metric("Dernier Audit", df['Secteur'].iloc[-1])
+                st.dataframe(df.sort_index(ascending=False), use_container_width=True)
                 
-                fig = px.pie(df, names='Secteur', title="Répartition par Secteur", hole=0.4)
-                st.plotly_chart(fig, use_container_width=True)
+                # Petit graphique rapide
+                df_audits = df[df['Type'].isin(['Checklist', 'Produit Fini'])]
+                if not df_audits.empty:
+                    st.subheader("Bilan des conformités")
+                    fig = px.pie(df_audits, names='Conformite', color='Conformite', color_discrete_map={"OK": "green", "CONFORME": "green", "NOK": "red", "NON CONFORME": "red"})
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Aucune donnée enregistrée pour le moment.")
         except:
-            st.info("Ajoutez votre lien Google Sheets pour voir les graphiques.")
-
-elif menu == "📚 Historique":
-    st.markdown('<p class="main-title">📚 Historique des Audits</p>', unsafe_allow_html=True)
-    if sheet_ready:
-        try:
-            df = conn.read()
-            st.dataframe(df, use_container_width=True)
-        except:
-            st.error("Lien Google Sheets manquant.")
+            st.warning("Vérifiez la connexion Google Sheets.")
