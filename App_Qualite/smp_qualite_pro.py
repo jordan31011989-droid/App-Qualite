@@ -2,25 +2,23 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
+import plotly.express as px
 
-# --- CONFIGURATION ET DESIGN ---
-st.set_page_config(page_title="SMP Sentinel Py", layout="wide", page_icon="🛡️")
+# --- CONFIGURATION ET STYLE ---
+st.set_page_config(page_title="SMP Sentinel Pro", layout="wide", page_icon="🛡️")
 
 st.markdown("""
     <style>
     .stApp { background-color: #F4F7F9; }
-    h1, h2, h3 { color: #1E3A8A; font-family: 'Arial', sans-serif; }
+    h1, h2, h3 { color: #1E3A8A; }
     .stButton>button {
         background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
-        color: white; font-size: 18px; font-weight: bold; 
-        border-radius: 10px; height: 3.5em; border: none;
-        width: 100%; margin-top: 10px;
+        color: white; border-radius: 10px; height: 3.5em; border: none; width: 100%;
     }
     div[data-testid="stForm"] {
         background-color: white; padding: 25px; border-radius: 15px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.08); border-top: 4px solid #1E3A8A;
     }
-    div.row-widget.stRadio > div { gap: 30px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -31,142 +29,92 @@ try:
 except:
     sheet_ready = False
 
-# --- BARRE LATÉRALE ---
+# --- MENU ---
 with st.sidebar:
     st.image("https://www.smp-paca.com/wp-content/uploads/2021/04/logo-smp.png", width=160)
-    st.markdown("### 👤 **Garant Qualité**")
-    st.divider()
-    menu = st.radio("MENU", 
-                    ["📋 Checklist Terrain", "📦 Audit Produits Finis", "🔧 Demandes Opérateurs", "📊 Dashboard Stats"])
-    st.divider()
-    st.caption(f"📅 {datetime.now().strftime('%d/%m/%Y')}")
+    menu = st.radio("MENU", ["📋 Checklist Terrain", "📦 Produits Finis", "🔧 Demandes", "📊 Dashboard Stats"])
+
+# --- DONNÉES DES SECTEURS ---
+criteres = {
+    "Débit": ["Propreté poste", "Suivis dimensionnels", "Coups et griffes", "Drainage traverse", "Coupes et bavures"],
+    "Usinage": ["Conformité perçages", "Ébavurage", "Évacuation copeaux", "Contrôle dimensionnel"],
+    "Sertissage": ["Pulvérisation H2O", "Sertissage sans jeu", "Étanchéité dormants", "Propreté cadres", "Équerrage"],
+    "Ferrage": ["Position gâches", "Vissage paumelles", "Alignement quincaillerie", "Graissage", "Rayures"],
+    "Montage": ["Test d'eau", "Étanchéité appui", "Fonctionnement ouv/ferm", "Fixation crémones"],
+    "Vitrage": ["Propreté verres", "Position cales", "Pose parcloses", "Joint vitrage"],
+    "Expédition": ["État palette", "Moussage", "Étiquetage", "Fixation colis"]
+}
 
 # ==========================================
-# 1. CHECKLIST TERRAIN (LA VRAIE LISTE COMPLÈTE)
+# 1. CHECKLIST TERRAIN
 # ==========================================
 if menu == "📋 Checklist Terrain":
-    
-    st.markdown("<h1>📋 Checklist Terrain</h1>", unsafe_allow_html=True)
-    
-    # LE DICTIONNAIRE COMPLET DE TON USINE
-    criteres_par_secteur = {
-        "Débit": [
-            "Propreté poste", 
-            "Suivis dimensionnels", 
-            "Coups et griffes", 
-            "Drainage traverse", 
-            "Coupes et bavures"
-        ],
-        "Usinage": [
-            "Conformité des perçages / fraisages", 
-            "Ébavurage correct", 
-            "Évacuation des copeaux", 
-            "Contrôle dimensionnel après usinage"
-        ],
-        "Sertissage": [
-            "Pulvérisation H2O", 
-            "Sertissage sans jeu", 
-            "Étanchéité dormants", 
-            "Propreté des cadres", 
-            "Contrôle de l'équerrage"
-        ],
-        "Ferrage": [
-            "Positionnement des gâches", 
-            "Vissage des paumelles", 
-            "Alignement des quincailleries", 
-            "Graissage et lubrification", 
-            "Absence de rayures au montage"
-        ],
-        "Montage": [
-            "Test d'eau", 
-            "Étanchéité pièce d'appui", 
-            "Stockage châssis finis",
-            "Test ouverture / fermeture",
-            "Fixation crémones"
-        ],
-        "Vitrage": [
-            "Propreté des verres", 
-            "Positionnement des cales", 
-            "Pose des parcloses (sans jour)", 
-            "Étanchéité joint de vitrage",
-            "Épaisseur du vitrage conforme"
-        ],
-        "Expédition": [
-            "État de la palette", 
-            "Palettisation et moussage", 
-            "Étiquetage client", 
-            "Protection P.A et Accessoires",
-            "Fixation des colis (sangles/film)"
-        ]
-    }
+    st.title("📋 Checklist Terrain")
+    secteur = st.selectbox("📍 CHOIX DU SECTEUR", list(criteres.keys()))
 
-    # Sélecteur de secteur dynamique
-    liste_secteurs = list(criteres_par_secteur.keys())
-    secteur = st.selectbox("📍 CHOIX DU SECTEUR", liste_secteurs)
-
-    # --- LE FORMULAIRE ---
     with st.form("audit_form"):
-        st.markdown(f"### 🔍 Évaluation : {secteur}")
-        st.markdown("---")
+        st.markdown(f"### Évaluation : {secteur}")
+        results = {}
+        for q in criteres[secteur]:
+            results[q] = st.radio(f"**{q}**", ["🟢 OK", "🟠 VIG", "🔴 NOK"], horizontal=True)
         
-        resultats_audit = {}
-        
-        # Affichage dynamique des questions selon le secteur
-        for question in criteres_par_secteur[secteur]:
-            resultats_audit[question] = st.radio(
-                f"**{question}**", 
-                options=["🟢 OK", "🟠 VIG", "🔴 NOK"], 
-                horizontal=True
-            )
-            st.markdown("<hr style='margin: 10px 0; border: 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
-            
-        st.markdown("### ✍️ Observations")
-        obs = st.text_area("Remarques, actions correctives ou alertes :", placeholder="Tout est conforme...")
-        
-        submit = st.form_submit_button("🚀 VALIDER ET TRANSMETTRE")
-        
-        if submit:
-            details_str = " | ".join([f"{k}: {v}" for k, v in resultats_audit.items()])
-            nb_nok = list(resultats_audit.values()).count("🔴 NOK")
+        obs = st.text_area("Observations")
+        if st.form_submit_button("🚀 VALIDER ET TRANSMETTRE"):
+            # Préparation des données
+            nb_nok = list(results.values()).count("🔴 NOK")
             etat = "NOK" if nb_nok > 0 else "OK"
+            details = " | ".join([f"{k}: {v}" for k, v in results.items()])
             
-            data_to_save = {
-                "Date": datetime.now().strftime("%d/%m/%Y %H:%M"), 
-                "Type": "Checklist", 
-                "Secteur": secteur, 
-                "Machine_Ref": "N/A", 
-                "Conformite": etat, 
-                "Details_Audit": details_str, 
+            new_row = {
+                "Date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "Type": "Checklist",
+                "Secteur": secteur,
+                "Conformite": etat,
+                "Details": details,
                 "Observations": obs
             }
             
             if sheet_ready:
                 try:
-                    df = conn.read()
-                    df = pd.concat([df, pd.DataFrame([data_to_save])], ignore_index=True)
-                    conn.update(data=df)
+                    df_existing = conn.read()
+                    df_updated = pd.concat([df_existing, pd.DataFrame([new_row])], ignore_index=True)
+                    # FIX DE L'ERREUR : On convertit en liste de dictionnaires
+                    conn.update(data=df_updated.to_dict(orient="records"))
                     st.balloons()
-                    st.success(f"✅ Audit '{secteur}' enregistré !")
-                except Exception as e: 
-                    st.error(f"Erreur d'envoi : {e}")
-            else:
-                st.warning("⚠️ Non envoyé : Connectez votre Google Sheets (Étape 2).")
+                    st.success("✅ Données envoyées !")
+                except Exception as e:
+                    st.error(f"Erreur : {e}")
 
 # ==========================================
-# (Les autres menus)
+# 4. DASHBOARD STATS (GRAPHIQUES AUTOMATIQUES)
 # ==========================================
-elif menu == "📦 Audit Produits Finis":
-    st.title("📦 Audit Produits Finis")
-    st.info("Section en cours d'intégration...")
-
-elif menu == "🔧 Demandes Opérateurs":
-    st.title("🔧 Demandes Opérateurs")
-    st.info("Section en cours d'intégration...")
-
 elif menu == "📊 Dashboard Stats":
-    st.title("📊 Dashboard Stats")
+    st.title("📊 Statistiques en Temps Réel")
+    
     if sheet_ready:
-        try:
-            st.dataframe(conn.read())
-        except:
-            st.warning("Connectez Google Sheets.")
+        df = conn.read()
+        if not df.empty:
+            # Métriques
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Audits", len(df))
+            col2.metric("Taux OK", f"{(len(df[df['Conformite']=='OK'])/len(df)*100):.1f}%")
+            col3.metric("Alertes NOK", len(df[df['Conformite']=='NOK']))
+
+            st.divider()
+
+            # Graphiques
+            g1, g2 = st.columns(2)
+            with g1:
+                st.subheader("Audits par Secteur")
+                fig_bar = px.bar(df['Secteur'].value_counts(), labels={'value':'Nombre', 'index':'Secteur'}, color_discrete_sequence=['#1E3A8A'])
+                st.plotly_chart(fig_bar, use_container_width=True)
+            
+            with g2:
+                st.subheader("Répartition Conformité")
+                fig_pie = px.pie(df, names='Conformite', color='Conformite', color_discrete_map={'OK':'#2ecc71', 'NOK':'#e74c3c'})
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            st.subheader("Historique des données")
+            st.dataframe(df.sort_index(ascending=False), use_container_width=True)
+        else:
+            st.info("Aucune donnée disponible.")
