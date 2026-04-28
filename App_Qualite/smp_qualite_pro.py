@@ -2,25 +2,10 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
-import plotly.express as px
+from fpdf import FPDF # Assurez-vous d'avoir fpdf2 dans votre requirements.txt
 
-# --- CONFIGURATION ET STYLE ---
-st.set_page_config(page_title="SMP Sentinel Pro", layout="wide", page_icon="🛡️")
-
-st.markdown("""
-    <style>
-    .stApp { background-color: #F4F7F9; }
-    h1, h2, h3 { color: #1E3A8A; }
-    .stButton>button {
-        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
-        color: white; border-radius: 10px; height: 3.5em; border: none; width: 100%;
-    }
-    div[data-testid="stForm"] {
-        background-color: white; padding: 25px; border-radius: 15px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.08); border-top: 4px solid #1E3A8A;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# --- CONFIGURATION ---
+st.set_page_config(page_title="SMP Sentinel Py", layout="wide", page_icon="🛡️")
 
 # --- CONNEXION GOOGLE SHEETS ---
 try:
@@ -29,113 +14,94 @@ try:
 except:
     sheet_ready = False
 
-# --- MENU ---
+# --- FONCTION PDF (CORRIGÉE) ---
+def export_pdf(title, data_dict):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Titre du rapport
+    pdf.set_font("helvetica", 'B', 16)
+    pdf.cell(190, 10, txt=title.upper(), ln=True, align='C')
+    pdf.ln(10)
+    
+    # Contenu du rapport
+    pdf.set_font("helvetica", size=11)
+    for key, value in data_dict.items():
+        # Nettoyage des caractères spéciaux pour éviter les bugs
+        clean_key = str(key).encode('latin-1', 'replace').decode('latin-1')
+        clean_val = str(value).encode('latin-1', 'replace').decode('latin-1')
+        
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(60, 10, txt=f" {clean_key}", border=1, fill=True)
+        pdf.cell(130, 10, txt=f" {clean_val}", border=1, ln=True)
+        
+    # Retourne les bytes directement (syntaxe fpdf2)
+    return pdf.output()
+
+# --- BARRE LATÉRALE ---
 with st.sidebar:
-    st.image("https://www.smp-paca.com/wp-content/uploads/2021/04/logo-smp.png", width=160)
-    menu = st.radio("MENU", ["📋 Checklist Terrain", "📦 Produits Finis", "🔧 Demandes", "📊 Dashboard Stats"])
+    st.image("https://www.smp-paca.com/wp-content/uploads/2021/04/logo-smp.png", width=150)
+    menu = st.radio("Navigation", ["📋 Checklist Terrain", "📊 Dashboard Stats"])
 
-# --- DONNÉES DES SECTEURS ---
-criteres = {
-    "Débit": ["Propreté poste", "Suivis dimensionnels", "Coups et griffes", "Drainage traverse", "Coupes et bavures"],
-    "Usinage": ["Conformité perçages", "Ébavurage", "Évacuation copeaux", "Contrôle dimensionnel"],
-    "Sertissage": ["Pulvérisation H2O", "Sertissage sans jeu", "Étanchéité dormants", "Propreté cadres", "Équerrage"],
-    "Ferrage": ["Position gâches", "Vissage paumelles", "Alignement quincaillerie", "Graissage", "Rayures"],
-    "Montage": ["Test d'eau", "Étanchéité appui", "Fonctionnement ouv/ferm", "Fixation crémones"],
-    "Vitrage": ["Propreté verres", "Position cales", "Pose parcloses", "Joint vitrage"],
-    "Expédition": ["État palette", "Moussage", "Étiquetage", "Fixation colis"]
-}
-
-# ==========================================
-# 1. CHECKLIST TERRAIN
-# ==========================================
 if menu == "📋 Checklist Terrain":
     st.title("📋 Checklist Terrain")
-    secteur = st.selectbox("📍 CHOIX DU SECTEUR", list(criteres.keys()))
+    
+    secteur = st.selectbox("Secteur d'audit", ["Débit", "Sertissage", "Montage", "Usinage", "Expédition"])
+    
+    criteres = {
+        "Débit": ["Propreté poste", "Suivis dimensionnels", "Coups et griffes", "Drainage traverse", "Coupes et bavures"],
+        "Sertissage": ["Pulvérisation H2O", "Sertissage sans jeu", "Étanchéité dormants", "Propreté cadres", "Équerrage"]
+    }
+    
+    questions = criteres.get(secteur, ["Contrôle général"])
 
     with st.form("audit_form"):
-        st.markdown(f"### Évaluation : {secteur}")
-        results = {}
-        for q in criteres[secteur]:
-            results[q] = st.radio(f"**{q}**", ["🟢 OK", "🟠 VIG", "🔴 NOK"], horizontal=True)
+        st.markdown(f"### Audit : {secteur}")
+        resultats = {}
         
+        # On affiche les questions proprement
+        for q in questions:
+            resultats[q] = st.radio(f"**{q}**", ["OK", "Vig", "NOK"], horizontal=True)
+            
         obs = st.text_area("Observations")
-        if st.form_submit_button("🚀 VALIDER ET TRANSMETTRE"):
-            
-            nb_nok = list(results.values()).count("🔴 NOK")
-            etat = "NOK" if nb_nok > 0 else "OK"
-            details = " | ".join([f"{k}: {v}" for k, v in results.items()])
-            
-            new_row = {
+        submit = st.form_submit_button("VALIDER ET GÉNÉRER PDF")
+        
+        if submit:
+            # Préparation des données
+            data_save = {
                 "Date": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "Type": "Checklist",
                 "Secteur": secteur,
-                "Conformite": etat,
-                "Details": details,
+                "Etat": "OK" if "NOK" not in resultats.values() else "NOK",
                 "Observations": obs
             }
             
+            # 1. Sauvegarde Google Sheets
             if sheet_ready:
                 try:
-                    # 1. On lit le tableau existant
-                    df_existing = conn.read()
-                    
-                    # 2. On crée le nouveau tableau
-                    df_new = pd.DataFrame([new_row])
-                    
-                    # 3. On colle les deux
-                    df_updated = pd.concat([df_existing, df_new], ignore_index=True)
-                    
-                    # 4. On envoie proprement (L'ERREUR EST CORRIGÉE ICI)
-                    conn.update(data=df_updated)
-                    
-                    # 5. On vide la mémoire pour que les graphiques se mettent à jour
-                    st.cache_data.clear()
-                    
-                    st.balloons()
-                    st.success("✅ Données envoyées avec succès !")
-                except Exception as e:
-                    st.error(f"Erreur de sauvegarde : {e}")
+                    df = conn.read()
+                    df = pd.concat([df, pd.DataFrame([data_save])], ignore_index=True)
+                    conn.update(data=df)
+                    st.success("✅ Enregistré dans Google Sheets !")
+                except:
+                    st.warning("⚠️ Sauvegarde Sheets impossible.")
 
-# ==========================================
-# 4. DASHBOARD STATS
-# ==========================================
+            # 2. Génération et téléchargement du PDF
+            try:
+                # On ajoute les détails des questions au dictionnaire pour le PDF
+                data_pdf = {**data_save, **resultats}
+                pdf_bytes = export_pdf(f"Audit {secteur}", data_pdf)
+                
+                st.download_button(
+                    label="📥 Télécharger le Rapport PDF",
+                    data=pdf_bytes,
+                    file_name=f"Audit_{secteur}_{datetime.now().strftime('%d%m_%H%M')}.pdf",
+                    mime="application/pdf"
+                )
+                st.balloons()
+            except Exception as e:
+                st.error(f"Erreur PDF : {e}")
+
 elif menu == "📊 Dashboard Stats":
-    st.title("📊 Statistiques en Temps Réel")
-    
+    st.title("📊 Dashboard")
     if sheet_ready:
-        try:
-            df = conn.read()
-            df = df.dropna(how='all') # Nettoie les lignes vides
-            
-            if not df.empty:
-                # Métriques Rapides
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Total Audits", len(df))
-                
-                if 'Conformite' in df.columns:
-                    nb_ok = len(df[df['Conformite'].isin(['OK', 'CONFORME'])])
-                    col2.metric("Taux OK", f"{(nb_ok / len(df) * 100):.1f}%")
-                    col3.metric("Alertes NOK", len(df) - nb_ok)
-
-                st.divider()
-
-                # Graphiques
-                g1, g2 = st.columns(2)
-                with g1:
-                    if 'Secteur' in df.columns:
-                        st.subheader("Audits par Secteur")
-                        fig_bar = px.bar(df['Secteur'].value_counts(), color_discrete_sequence=['#1E3A8A'])
-                        st.plotly_chart(fig_bar, use_container_width=True)
-                
-                with g2:
-                    if 'Conformite' in df.columns:
-                        st.subheader("Répartition Conformité")
-                        fig_pie = px.pie(df, names='Conformite', color='Conformite', color_discrete_map={'OK':'#2ecc71', 'NOK':'#e74c3c'})
-                        st.plotly_chart(fig_pie, use_container_width=True)
-
-                st.subheader("Historique des données")
-                st.dataframe(df.sort_index(ascending=False), use_container_width=True)
-            else:
-                st.info("Le Google Sheet est vide pour le moment. Faites un premier audit !")
-        except Exception as e:
-            st.error(f"Erreur de lecture du Dashboard : {e}")
+        st.dataframe(conn.read())
