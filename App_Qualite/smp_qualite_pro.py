@@ -6,35 +6,34 @@ from datetime import datetime
 # --- CONFIGURATION ET DESIGN ---
 st.set_page_config(page_title="SMP Sentinel Py", layout="wide", page_icon="🛡️")
 
-# Injection de CSS pour le "Graphic Design"
 st.markdown("""
     <style>
-    /* Couleur de fond de l'appli */
-    .stApp { background-color: #F1F5F9; }
+    /* Couleur de fond */
+    .stApp { background-color: #F4F7F9; }
     
-    /* Design des titres */
-    h1, h2, h3 { color: #1E3A8A; font-family: 'Helvetica Neue', sans-serif; }
+    /* Titres */
+    h1, h2, h3 { color: #1E3A8A; font-family: 'Arial', sans-serif; }
     
-    /* Style du bouton de validation */
+    /* Bouton Valider */
     .stButton>button {
         background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
         color: white; font-size: 18px; font-weight: bold; 
-        border-radius: 12px; height: 3.5em; border: none;
-        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
-        transition: all 0.3s ease;
-    }
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+        border-radius: 10px; height: 3.5em; border: none;
+        width: 100%; margin-top: 10px;
     }
     
-    /* Style pour les blocs de questions */
+    /* Boîte blanche du formulaire */
     div[data-testid="stForm"] {
         background-color: white;
-        padding: 30px;
+        padding: 25px;
         border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-        border-top: 5px solid #3B82F6;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        border-top: 4px solid #1E3A8A;
+    }
+    
+    /* Espacement des boutons radio */
+    div.row-widget.stRadio > div {
+        gap: 30px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -48,29 +47,25 @@ except:
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
-    st.image("https://www.smp-paca.com/wp-content/uploads/2021/04/logo-smp.png", width=180)
-    st.markdown("---")
+    st.image("https://www.smp-paca.com/wp-content/uploads/2021/04/logo-smp.png", width=160)
     st.markdown("### 👤 **Garant Qualité**")
-    menu = st.radio("Navigation", 
-                    ["📋 Checklist Terrain", "📦 Audit Produits Finis", "🔧 Demandes Opérateurs", "📊 Dashboard Stats"],
-                    label_visibility="collapsed")
     st.divider()
-    st.caption(f"📅 {datetime.now().strftime('%d/%m/%Y - %H:%M')}")
+    menu = st.radio("MENU", 
+                    ["📋 Checklist Terrain", "📦 Audit Produits Finis", "🔧 Demandes Opérateurs", "📊 Dashboard Stats"])
+    st.divider()
+    st.caption(f"📅 {datetime.now().strftime('%d/%m/%Y')}")
 
 # ==========================================
-# 1. CHECKLIST TERRAIN (VERSION DESIGN & JAUGES)
+# 1. CHECKLIST TERRAIN (SANS BUG)
 # ==========================================
 if menu == "📋 Checklist Terrain":
     
     st.markdown("<h1>📋 Checklist Terrain</h1>", unsafe_allow_html=True)
-    st.write("Sélectionnez le secteur puis évaluez chaque critère en glissant la jauge.")
     
-    # LE CHOIX DU SECTEUR EST DEHORS POUR METTRE À JOUR EN DIRECT
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        secteur = st.selectbox("📍 CHOIX DU SECTEUR", ["Débit", "Sertissage/Jointage", "Montage", "Usinage", "Logistique/Expédition"])
+    # Choix du secteur (prend toute la largeur pour être bien visible)
+    secteur = st.selectbox("📍 CHOIX DU SECTEUR", ["Débit", "Sertissage/Jointage", "Montage", "Usinage", "Logistique/Expédition"])
     
-    # Points de contrôle réécrits de façon professionnelle
+    # Points de contrôle pros
     criteres_par_secteur = {
         "Débit": [
             "🧹 Propreté et rangement du poste", 
@@ -79,19 +74,11 @@ if menu == "📋 Checklist Terrain":
             "💧 Conformité du drainage traverse", 
             "✂️ Qualité des coupes et absence de bavures"
         ],
-        "Sertissage/Jointage": [
-            "💧 Pulvérisation H2O conforme", 
-            "🔧 Sertissage (Absence de jeu)", 
-            "🛡️ Étanchéité des dormants", 
-            "✨ Propreté des cadres (sans traces)", 
-            "📐 Contrôle de l'équerrage"
-        ],
+        "Sertissage/Jointage": ["💧 Pulvérisation H2O conforme", "🔧 Sertissage sans jeu", "🛡️ Étanchéité dormants", "✨ Propreté des cadres", "📐 Contrôle équerrage"],
         "Montage": ["Cales vitrage", "Serrage paumelles", "Test ouverture/fermeture", "Fixation crémones", "Défauts d'aspect"],
         "Usinage": ["Conformité perçages", "Ébavurage", "Évacuation copeaux", "Contrôle dimensionnel"],
         "Logistique/Expédition": ["État palette", "Calage et moussage", "Étiquetage", "Fixation colis"]
     }
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     # --- LE FORMULAIRE ---
     with st.form("audit_form"):
@@ -100,28 +87,23 @@ if menu == "📋 Checklist Terrain":
         
         resultats_audit = {}
         
-        # Affichage des jauges (select_slider)
+        # Affichage avec des boutons simples et colorés
         for question in criteres_par_secteur[secteur]:
-            st.markdown(f"**{question}**")
-            # La fameuse jauge ultra visuelle
-            resultats_audit[question] = st.select_slider(
-                label="Évaluation", # Caché visuellement mais nécessaire
-                options=["❌ Non Conforme", "⚠️ Vigilance", "✅ Conforme"],
-                value="✅ Conforme",
-                label_visibility="collapsed"
+            resultats_audit[question] = st.radio(
+                f"**{question}**", 
+                options=["🟢 OK", "🟠 VIG", "🔴 NOK"], 
+                horizontal=True
             )
-            st.markdown("<br>", unsafe_allow_html=True) # Espace entre chaque question
+            st.markdown("<hr style='margin: 10px 0; border: 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True) # Petite ligne de séparation douce
             
-        st.markdown("---")
-        st.markdown("### ✍️ Rapport de l'auditeur")
-        obs = st.text_area("Observations, remarques ou actions correctives immédiates :", placeholder="Tout est conforme sur ce poste...")
+        st.markdown("### ✍️ Observations")
+        obs = st.text_area("Remarques, actions correctives ou alertes :", placeholder="Tout est conforme...")
         
-        st.markdown("<br>", unsafe_allow_html=True)
-        submit = st.form_submit_button("🚀 VALIDER ET TRANSMETTRE L'AUDIT")
+        submit = st.form_submit_button("🚀 VALIDER ET TRANSMETTRE")
         
         if submit:
             details_str = " | ".join([f"{k}: {v}" for k, v in resultats_audit.items()])
-            nb_nok = list(resultats_audit.values()).count("❌ Non Conforme")
+            nb_nok = list(resultats_audit.values()).count("🔴 NOK")
             etat = "NOK" if nb_nok > 0 else "OK"
             
             data_to_save = {
@@ -140,22 +122,22 @@ if menu == "📋 Checklist Terrain":
                     df = pd.concat([df, pd.DataFrame([data_to_save])], ignore_index=True)
                     conn.update(data=df)
                     st.balloons()
-                    st.success(f"✅ L'audit du secteur **{secteur}** a été enregistré avec succès !")
+                    st.success(f"✅ Audit enregistré !")
                 except Exception as e: 
                     st.error(f"Erreur d'envoi : {e}")
             else:
-                st.warning("⚠️ Non envoyé : Connectez votre Google Sheets dans les 'Secrets'.")
+                st.warning("⚠️ Non envoyé : Connectez votre Google Sheets.")
 
 # ==========================================
 # (Menus basiques pour l'instant)
 # ==========================================
 elif menu == "📦 Audit Produits Finis":
     st.title("📦 Audit Produits Finis")
-    st.info("Section en cours de design...")
+    st.info("Section en cours d'intégration...")
 
 elif menu == "🔧 Demandes Opérateurs":
     st.title("🔧 Demandes Opérateurs")
-    st.info("Section en cours de design...")
+    st.info("Section en cours d'intégration...")
 
 elif menu == "📊 Dashboard Stats":
     st.title("📊 Dashboard Stats")
